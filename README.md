@@ -19,7 +19,7 @@ Additionally, access to Gurobi Optimizer is required. Access to Gurobi's academi
 
 ## Datasets
 * To get access to the food-delivery dataset, please follow the procedure defined [here](https://www.cse.iitd.ac.in/~sayan/files/foodmatch.txt).
-	* After getting the data, structure it in the format specified in [./data/A](./data/A)
+	* After getting the data, structure it in the format specified in [./data/A/meta.md](./data/A/meta.md)
 * The scripts to generate the completely synthetic datasets (SynSparse and SynDense) and the semi-synthetic quick-commerce dataset are present in [./data_gen](./data_gen). 
 	* To get exemplar, already generated, instances of these datasets, please mail [here](damandeepddsb@gmail.com) with "[FAIR-KSERVER]: DATA REQUEST" as the subject. 
 
