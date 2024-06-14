@@ -17,3 +17,6 @@ conda activate fair_kserver
 ```
 Additionally, access to Gurobi Optimizer is required. Access to Gurobi's academic (free!) license can be requested [here]().
 
+## Dataset
+* To get access to the food-delivery dataset, please follow the procedure defined [here]().
+* The scripts to generate the completely synthetic datasets (SynSparse and SynDense) and the semi-synthetic quick-commerce dataset are present in ./data_gen. Exemplar instances of these datasets are provided in the ./data/synthetic and ./data/quick_commerce respectively. 
