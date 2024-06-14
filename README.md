@@ -24,7 +24,21 @@ Additionally, access to Gurobi Optimizer is required. Access to Gurobi's academi
 	* To get exemplar, already generated, instances of these datasets, please mail [here](damandeepddsb@gmail.com) with "[FAIR-KSERVER]: DATA REQUEST" as the subject. 
 
 ## Running the code
-* Usage
+* Offline-optimal solution
+	* Usage
+	```bash
+	python3 src/offline_solution.py --city X
+	```
+	* The parameters are explained below:
+		- **city_name**: A (food-delivery), Q (quick-commerce), X (synthetic)
+		- ****:
 
-* The parameters are explained below:
+* Online solutions
+	* Usage
+	```bash
+	python3 src/online_solution.py --city X
+	```
+	* The parameters are explained below:
+		- **city_name**: A (food-delivery), Q (quick-commerce), X (synthetic)
+		- ****:
 
