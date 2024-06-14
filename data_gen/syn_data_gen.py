@@ -54,7 +54,8 @@ def generate_metric_space_and_save(num_nodes, edge_prob, speed, wt_type):
     def generate_edge_weights(edges, wt_type):
         print("Generating edge weights ...")
         if wt_type=='random':
-            weights = [random.randint(speed, speed*1800) for x in edges]
+            # weights = [random.randint(speed, speed*1800) for x in edges]
+            weights = [random.randint(10, 1000) for x in edges]
             # since speed is in m/s, speed*1800 is the distance travelled in 1800 seconds (30 mins) # heuristic
         elif wt_type=='uniform':
             weights = [1]*len(edges)
@@ -119,15 +120,11 @@ def generate_metric_space_and_save(num_nodes, edge_prob, speed, wt_type):
     nodes, edges = generate_graph(num_nodes, edge_prob)
     check_connectivity(edges)
     weights = generate_edge_weights(edges, wt_type)
-    mst_edges, mst_weights = get_mst(edges, weights)
     network_df = get_graph_df(edges, weights)
-    mst_df = get_graph_df(mst_edges, mst_weights)
     apsp_dist, apsp_time, paths_dist, paths_time = get_all_pairs_shortest_paths(edges, weights)
-    mst_apsp_dist, mst_apsp_time, mst_paths_dist, mst_paths_time = get_all_pairs_shortest_paths(mst_edges, mst_weights)
-    # apsp_dist_mst, ...
     print(f"Successfully generated a graph with {num_nodes} vertices and {len(edges)} edges.")
     
-    return network_df, apsp_dist, apsp_time, paths_dist, paths_time, mst_df, mst_apsp_dist, mst_apsp_time, mst_paths_dist, mst_paths_time
+    return network_df, apsp_dist, apsp_time, paths_dist, paths_time
 
 
 def generate_requests_data(num_reqs, num_ts, num_nodes):
@@ -192,22 +189,7 @@ def generate_servers_data(num_servers, num_nodes):
 
 
 
-if __name__=='__main__':
-    # parser = configparser.RawConfigParser()
-    # configFilePath = 'syn_data_config.cfg'
-    # parser.read(configFilePath) 
-    
-    # num_nodes = int(parser.get('metric-space', 'num_nodes'))
-    # edge_prob = float(parser.get('metric-space', 'edge_prob'))
-    # speed = float(parser.get('metric-space', 'speed'))
-    # wt_type = parser.get('metric-space', 'weight_type')
-
-    # num_reqs = int(parser.get('requests-data', 'num_requests'))
-    # num_hours = int(parser.get('requests-data', 'num_hours'))
-    
-    # num_servers = int(parser.get('servers-data', 'num_servers')) 
-
-    
+if __name__=='__main__':    
     # Program inputs    
     parser = argparse.ArgumentParser() 
     parser.add_argument('--num_nodes', type=int, required=True)
@@ -238,36 +220,22 @@ if __name__=='__main__':
     apsp_time_path = os.path.join(syn_datapath, f'map/apsp_time_{num_nodes}_p{edge_prob}.pkl')
     paths_dist_path = os.path.join(syn_datapath, f'map/apsp_dist_lists_{num_nodes}_p{edge_prob}.pkl')
     paths_time_path = os.path.join(syn_datapath, f'map/apsp_time_lists_{num_nodes}_p{edge_prob}.pkl')
-    mst_filepath = os.path.join(syn_datapath, f'map/mst_{num_nodes}_p{edge_prob}.csv')
-    mst_apsp_dist_path = os.path.join(syn_datapath, f'map/mst_apsp_dist_{num_nodes}_p{edge_prob}.pkl')
-    mst_apsp_time_path = os.path.join(syn_datapath, f'map/mst_apsp_time_{num_nodes}_p{edge_prob}.pkl') 
-    mst_paths_dist_path = os.path.join(syn_datapath, f'map/mst_apsp_dist_lists_{num_nodes}_p{edge_prob}.pkl')
-    mst_paths_time_path = os.path.join(syn_datapath, f'map/mst_apsp_time_lists_{num_nodes}_p{edge_prob}.pkl')
-    
     
     # Metric space
     net_df, apsp_dist, apsp_time, paths_dist, paths_time, mst_df, mst_apsp_dist, mst_apsp_time, mst_paths_dist, mst_paths_time = generate_metric_space_and_save(num_nodes, edge_prob, speed, wt_type)
     net_df.to_csv(ms_filepath, index=False)
-    mst_df.to_csv(mst_filepath, index=False)
     print(f"Generated network stored successfully at {ms_filepath}")
-    print(f"Generated MST stored successfully at {ms_filepath}")
-    # picklify(apsp_dist, apsp_dist_path)
-    # picklify(apsp_time, apsp_time_path) 
-    # picklify(paths_dist, paths_dist_path)
-    # picklify(paths_time, paths_time_path)
-    ## 
-    picklify(mst_apsp_dist, mst_apsp_dist_path)
-    picklify(mst_apsp_time, mst_apsp_time_path) 
-    picklify(mst_paths_dist, mst_paths_dist_path)
-    picklify(mst_paths_time, mst_paths_time_path)
+    picklify(apsp_dist, apsp_dist_path)
+    picklify(apsp_time, apsp_time_path) 
+    picklify(paths_dist, paths_dist_path)
+    picklify(paths_time, paths_time_path)
     
     # Requests 
-    # requests_df = generate_requests_data(num_reqs, num_ts, num_nodes) 
-    # requests_df.to_csv(req_filepath, index=False)
-    # print(f"Generated requests data stored successfully at {req_filepath}")
-
+    requests_df = generate_requests_data(num_reqs, num_ts, num_nodes) 
+    requests_df.to_csv(req_filepath, index=False)
+    print(f"Generated requests data stored successfully at {req_filepath}")
 
     # Servers
-    # init_locs = generate_servers_data(num_servers, num_nodes)
-    # init_locs.to_csv(ser_filepath, index=False) 
-    # print(f"Generated servers data stored successfully at {ser_filepath}")
+    init_locs = generate_servers_data(num_servers, num_nodes)
+    init_locs.to_csv(ser_filepath, index=False) 
+    print(f"Generated servers data stored successfully at {ser_filepath}")

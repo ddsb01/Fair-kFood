@@ -14,72 +14,6 @@ import networkx as nx
 from pprint import pprint 
 
 
-"""
-def get_all_pair_shortest_path(road_net, weight_var='dist'):
-    print("Creating graph and adding edges ...")
-    graph = nx.Graph() 
-    for idx, edge in tqdm(road_net.iterrows(), total=len(road_net)):
-        graph.add_edge(edge.u, edge.v, dist=edge.dist, time=edge.time)
-
-    # calculate all-pair shortest paths 
-    print("Computing all-pairs shortest paths ...")
-    print("This might take a while.")
-    all_pair_shortest_paths = dict(nx.floyd_warshall(graph, weight=weight_var))
-    
-    return all_pair_shortest_paths
-"""
-
-def WRONG_get_all_pair_shortest_path(road_net, orders_df, weight_var, t_hrs=-1):
-    ''' 
-    Assumption:
-        All road segments are 2-way. 
-        This isn't true for many roads! (see ./data/../original/map_orig/"segments_mode_connected.csv" ; "edges")
-    '''
-    print("Creating graph and adding edges ...")
-    graph = nx.Graph() 
-    for idx, edge in tqdm(road_net.iterrows(), total=len(road_net)):
-        graph.add_edge(edge.u, edge.v, dist=edge.dist, time=edge.time)
-
-    shortest_paths = [] # unit=metres (if weight_var='dist')
-               # unit=seconds (if weight_var='time') 
-    
-    if t_hrs!=-1:
-        # Calculate all pairs shortest paths only for nodes related to orders (rest_nodes & cust_nodes) placed upto the t-th hour
-        orders_df = orders_df[orders_df.placed_time <= t_hrs * 3600]
-        rest_nodes = np.unique(orders_df.rest_node.values) 
-        # cust_nodes = orders_df.cust_node.values 
-        # all_nodes = np.concatenate((rest_nodes, cust_nodes))
-        all_nodes = np.arange(NUM_NODES)
-
-        shortest_paths = {
-                src_idx: \
-                    {dest_idx:-1 for dest_idx in rest_nodes} \
-                    for src_idx in all_nodes
-                }
-
-        print(f"Number of restaurant nodes: {rest_nodes.shape[0]}")
-        # THIS IS UTTER FOOLISHNESS!!
-        # Here, TC: O(num_all_nodes * rest_nodes * shortest_path_calculation) 
-        # Optimal (see new function) TC: O(rest_nodes * shortest_path_calculation)
-        for src_idx in tqdm(all_nodes, total=len(all_nodes)):
-            for dest_idx in rest_nodes:
-                if shortest_paths[src_idx][dest_idx]==-1:
-                    curr_length = nx.shortest_path_length(graph, src_idx, dest_idx, weight=weight_var)
-                    shortest_paths[src_idx][dest_idx] = curr_length
-                    shortest_paths[dest_idx][src_idx] = curr_length # since graph is undirected (see Assumption)
-    
-    else:
-        # Calculate all pair shortest paths (for all nodes in the road network):
-        ###### Optimization : Change the below code so that all pair shortest paths are only computed between rest_nodes and all_nodes
-        print(f"Number of nodes: {road_net.shape[0]}")
-        print("Computing all-pairs shortest paths ...")
-        print("This might take a while.")
-        shortest_paths = dict(nx.floyd_warshall(graph, weight=weight_var))
-    
-
-    return shortest_paths
-
-
 def get_mst(edges, dists, times):
     def get_apsp(nodes, edges, dists, times):
         print("Computing all pair shortest paths ...")
@@ -108,6 +42,7 @@ def get_mst(edges, dists, times):
 
         return apsp_dist, apsp_time, paths_dist, paths_time
     
+
     def get_graph_df(edges, dists, times):
         print("Creating graph dataframe ...")
         assert len(edges)==len(dists), 'edges and dists have unequal dimesions!'
@@ -144,7 +79,7 @@ def get_mst(edges, dists, times):
     mst_nodes = list(mst_nodes)
 
     mst_df = get_graph_df(mst_edges, mst_dists, mst_times)
-    mst_apsp_time, mst_paths_time = get_apsp(mst_nodes, mst_edges, mst_dists, mst_times)
+    mst_apsp_dist, mst_apsp_time, mst_paths_dist, mst_paths_time = get_apsp(mst_nodes, mst_edges, mst_dists, mst_times)
     return mst_df, mst_apsp_dist, mst_apsp_time, mst_paths_dist, mst_paths_time
 
 
@@ -170,7 +105,9 @@ def get_all_pair_shortest_path(road_net, orders_df, weight_var, t_hrs=-1):
         # all_nodes = np.concatenate((rest_nodes, cust_nodes))
         all_nodes = np.arange(NUM_NODES)
 
+        rest_nodes = np.append(rest_nodes, 0)
         shortest_path_lengths = {src_idx:None for src_idx in rest_nodes}
+        # shortest_path_lengths[0] = None # @@@@@@@@@
         shortest_paths = {src_idx:None for src_idx in rest_nodes}
 
         print(f"Number of restaurant nodes: {rest_nodes.shape[0]}")
@@ -252,7 +189,7 @@ if __name__=='__main__':
     if t_hrs==-1: apsp_lengths = parse_shortest_paths_output(apsp_lengths)
 
     # save all-pairs shortest paths 
-    # filename = os.path.join(data_path, f'{city}/map/all_pair_shortest_paths_{weight_var}_t={t_hrs}.pkl')
+    filename = os.path.join(data_path, f'{city}/map/all_pair_shortest_paths_{weight_var}_t={t_hrs}.pkl')
     filename1 = os.path.join(data_path, f'{city}/map/{day}/apsp/all_pair_shortest_paths_{weight_var}_t={t_hrs}.pkl')
     filename2 = os.path.join(data_path, f'{city}/map/{day}/apsp/all_pair_shortest_paths_lists_{weight_var}_t={t_hrs}.pkl')
     
@@ -260,28 +197,28 @@ if __name__=='__main__':
     if t_hrs!=-1: picklify(aps_paths, filename2)
 
 
-    # # MST generation:
-    # edges, dists, times = [], [], []
-    # for idx, edge in road_net.iterrows():
-    #     edges.append((edge.u, edge.v))
-    #     dists.append(edge.dist)
-    #     times.append(edge.time)
+    # MST generation:
+    edges, dists, times = [], [], []
+    for idx, edge in road_net.iterrows():
+        edges.append((edge.u, edge.v))
+        dists.append(edge.dist)
+        times.append(edge.time)
     
-    # mst_df, mst_apsp_dist, mst_apsp_time, mst_paths_dist, mst_paths_time = get_mst(edges, dists, times)
-    # mst_df.to_csv(os.path.join(data_path, f'{city}/map/mst_df_t={t_hrs}.csv'))
-    # apsp_dist_path = os.path.join(data_path, f'{city}/map/{day}/apsp/mst_apsp_dist_t={t_hrs}.pkl')
-    # apsp_time_path = os.path.join(data_path, f'{city}/map/{day}/apsp/mst_apsp_time_t={t_hrs}.pkl')
-    # paths_dist_path = os.path.join(data_path, f'{city}/map/{day}/apsp/mst_paths_lists_dist_t={t_hrs}.pkl')
-    # paths_time_path = os.path.join(data_path, f'{city}/map/{day}/apsp/mst_paths_lists_time_t={t_hrs}.pkl')
+    mst_df, mst_apsp_dist, mst_apsp_time, mst_paths_dist, mst_paths_time = get_mst(edges, dists, times)
+    mst_df.to_csv(os.path.join(data_path, f'{city}/map/mst_df_t={t_hrs}.csv'))
+    apsp_dist_path = os.path.join(data_path, f'{city}/map/{day}/apsp/mst_apsp_dist_t={t_hrs}.pkl')
+    apsp_time_path = os.path.join(data_path, f'{city}/map/{day}/apsp/mst_apsp_time_t={t_hrs}.pkl')
+    paths_dist_path = os.path.join(data_path, f'{city}/map/{day}/apsp/mst_paths_lists_dist_t={t_hrs}.pkl')
+    paths_time_path = os.path.join(data_path, f'{city}/map/{day}/apsp/mst_paths_lists_time_t={t_hrs}.pkl')
     
-    # picklify(mst_apsp_dist, apsp_time_path)
-    # picklify(mst_apsp_time, apsp_time_path)
-    # picklify(mst_paths_dist, paths_dist_path)
-    # picklify(mst_paths_time, paths_time_path)
+    picklify(mst_apsp_dist, apsp_time_path)
+    picklify(mst_apsp_time, apsp_time_path)
+    picklify(mst_paths_dist, paths_dist_path)
+    picklify(mst_paths_time, paths_time_path)
     
-    # '''
-    # load and verify 
-    # all_pair_shortest_paths = depicklify(filename1)
-    # pprint(all_pair_shortest_paths)
-    # '''
+    '''
+    load and verify 
+    all_pair_shortest_paths = depicklify(filename1)
+    pprint(all_pair_shortest_paths)
+    '''
 

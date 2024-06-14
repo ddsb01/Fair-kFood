@@ -196,18 +196,39 @@ def sanity_check(orders_data):
         return   
 
 
-def save_as_csv(df, filename):
-    df.to_csv(filename, index=False)
+def get_load_characteristics(orders_df, slot_size=30*60):
+    rest_load = pd.DataFrame(columns=['rest_id', 'slot', 'load'])
+    numSlots = 86400//slot_size
+    slots = [x for x in range(numSlots)]
+    rest_load['rest_id'] = np.ndarray.flatten(np.array([[rest]*numSlots for rest in rests]))
+    rest_load['slot'] = np.ndarray.flatten(np.array([slots]*len(rests)))
+    rest_load['load'] = [0]*numSlots*len(rests)
+
+    grouped_orders = orders_df.groupby('rest_id')
+    rests = np.unique(orders_df['rest_id'])
+    for rest in rests:
+        rest_data = grouped_orders.get_group(rest)
+        for slot, upperLimit in enumerate(range(slot_size, 86400+1, slot_size)):
+            numRequests = rest_data[(rest_data['placed_ts']>=upperLimit-slot_size) & (rest_data['placed_ts']<=upperLimit)].shape[0]
+            rest_load.loc[(rest_load.rest_id==rest) & (rest_load.slot==slot), 'load'] = numRequests
+    # rest_load.to_csv(f'/home/daman/Desktop/k_server/code/data/{city}/orders/{day}/rest_load.csv', index=False)
+    storePath = os.path.join(data_path, f'{city}/orders/{day}/rest_load.csv')
+    save_as_csv(rest_load, storePath)
+    return
+
+
+def save_as_csv(dataframe, filename):
+    dataframe.to_csv(filename, index=False)
     print(f"Data saved successfully as {filename}")
     return
 
 
 def process_generate_check_save(orders_data, filename):
     orders_data = process_and_generate_data(orders_data)
-    orders_data = ensure_distinct_prepared_timestamps(orders_data, window_size=shift_window_size, step_size=1)
+    # orders_data = ensure_distinct_prepared_timestamps(orders_data, window_size=shift_window_size, step_size=1)
     # shift_window_size upto 1 hour is reasonable as it can't move peak-hour orders too far away from the peak hour
     orders_data = ensure_distinct_end_terminal_timestamps(orders_data)
-    sanity_check(orders_data)
+    # sanity_check(orders_data)
     save_as_csv(orders_data, filename)
     return 
 
@@ -236,17 +257,13 @@ def process_generate_odd_check_save(orders_data, filename):
     return 
 
 
-def map_driver_init_nodes_and_save(loc_df, loc2node_df, filename):
-    # map the driver lat-lng to the nearest co-orindate's node 
-    pass
-
 
 if __name__=='__main__':
     # Program inputs 
     parser = argparse.ArgumentParser()
     parser.add_argument('--city', choices=['A', 'B', 'C'], default='A', 
                         type=str, required=True, help='City name')
-    parser.add_argument('--day', choices=[1, 2, 3, 4, 5, 6], default=1, 
+    parser.add_argument('--day', choices=range(12), default=1, 
                         type=int, required=True, help='Day index')
     parser.add_argument('--shift_window_size', choices=range(360), default=60, # 60 minutes 
                         type=int, required=False, help='Number of minutes by which an orders can be shifted so that distinct prep_ts can be achieved')
@@ -262,7 +279,7 @@ if __name__=='__main__':
 
 
     # Datapaths
-    data_path = '/home/daman/Desktop/k_server/code/data/'
+    data_path = './data'
     name2id = {'A':10, 'B':1, 'C':4}
     id2name = {v:k for k,v in name2id.items()}
 
@@ -273,12 +290,12 @@ if __name__=='__main__':
                                            f'{city}/orders/{day}/orders.csv'), sep=' ').rename(columns={'node_id':'cust_node', 'restaurant_id':'rest_id'})
     rest_prep_time = pd.read_csv(os.path.join(data_path, 
                                               f'{city}/orders/{day}/rest_prep_time.csv'), sep=' ').rename(columns={'restaurant_id':'rest_id','sec':'prep_time','sec_std':'fpt_std'})
-    rest_prep_time_slotted = pd.read_csv(os.path.join(data_path, 
-                                                      f'{city}/orders/{day}/rest_prep_time_slotted.csv'), sep=' ')
+    # rest_prep_time_slotted = pd.read_csv(os.path.join(data_path, 
+                                                    #   f'{city}/orders/{day}/rest_prep_time_slotted.csv'), sep=' ')
     rest_to_node = pd.read_csv(os.path.join(data_path, f'{city}/orders/rest_id_to_node.csv'), 
                                header=None, sep=' ', names=['rest_id', 'rest_node'])
 
-    drivers_data = pd.read_csv(os.path.join(data_path, f'{city}/drivers/{day}/driver_coords.csv'))
+    # drivers_data = pd.read_csv(os.path.join(data_path, f'{city}/drivers/{day}/driver_coords.csv'))
     loc2node_data = pd.read_csv(os.path.join(data_path, f'{city}/drivers/node_coord_map_{city}.csv'))
     idx2node = pd.read_csv(os.path.join(data_path, f'{city}/map/index_to_node_id.csv'), header=None, names=['idx', 'node_id'])
     node2idx = pd.read_csv(os.path.join(data_path, f'{city}/map/node_id_to_index.csv'), header=None, names=['node_id', 'idx'])
@@ -296,23 +313,20 @@ if __name__=='__main__':
 
     # Process data and create required columns
     # filename = os.path.join(data_path, f'{city}/orders/{day}/final_orders_{day}.csv')
-    filename = os.path.join(data_path, f'{city}/orders/{day}/final_orders.csv')
+    filename = os.path.join(data_path, f'{city}/orders/{day}/_final_orders.csv')
     process_generate_check_save(final_orders_data, filename)
-    # breakpoint() 
 
     # # Process data and create required columns + Slotting
-    # filename = os.path.join(data_path, f'{city}/orders/{day}/final_orders_slotted_{timestep}.csv')
-    # process_generate_slot_check_save(final_orders_data, timestep=30, filename=filename) 
-    # breakpoint()
+    filename = os.path.join(data_path, f'{city}/orders/{day}/final_orders_slotted_{timestep}.csv')
+    process_generate_slot_check_save(final_orders_data, timestep=30, filename=filename) 
     
     # # Process data and create required columns + Only odd timestamps
-    # filename = os.path.join(data_path, f'{city}/orders/{day}/final_orders_odd_timestamps.csv')
-    # process_generate_odd_check_save(final_orders_data, filename)
-    # breakpoint()
+    filename = os.path.join(data_path, f'{city}/orders/{day}/final_orders_odd_timestamps.csv')
+    process_generate_odd_check_save(final_orders_data, filename)
 
     # # Process and create driver initial locations file for given day 
-    # filename = os.path.join(data_path, f'{city}/drivers/driver_init_nodes.csv')
-    # map_driver_init_nodes_and_save(drivers_data, loc2node_data, filename)
+    filename = os.path.join(data_path, f'{city}/drivers/driver_init_nodes.csv')
+    map_driver_init_nodes_and_save(drivers_data, loc2node_data, filename)
     
 
 

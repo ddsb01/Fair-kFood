@@ -1,13 +1,9 @@
-# We are looking for an "offline optimal" for the "k-server maxmin with preparation time" problem
-# It is also to check the feasibility
-
 import warnings
 warnings.filterwarnings('ignore')
 
 import os 
 import sys 
 import copy
-import dill 
 import glob
 import lzma
 import time
@@ -19,7 +15,6 @@ import numpy as np
 import pandas as pd 
 from tqdm import tqdm 
 from copy import deepcopy
-import matplotlib.pyplot as plt 
 from collections import defaultdict
 
 import gurobipy as gb 
@@ -71,7 +66,7 @@ def parse_all_pair_shortest_paths(apsp_dist, apsp_time):
     inner_keys = list(apsp_dist[outer_keys[0]].keys()) # all_nodes in road_network~40K
 
     print(f"Total number of nodes : {len(inner_keys)}")
-    print(f"Number of restaurants active within the the first 't' hours : {len(outer_keys)}")
+    print(f"Number of restaurants active within the given duration : {len(outer_keys)}")
 
     all_pairs_shortest_paths = {
         node_1: {
@@ -137,17 +132,6 @@ def get_active_servers(intervals_datapath, t):
         if t==24: active_drivers = all_drivers
     return len(active_drivers)
 
-
-def get_init_nodes(drivers_init_path):
-    df = pd.read_csv(drivers_init_path)
-    init_nodes = df['node'].values.tolist() 
-    return init_nodes
-
-
-def get_batches(orders, batch_size):
-    batches = [()]
-    return batches
-
 # ----------------------------------------------------------
 
 def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, all_pairs_shortest_paths, weight_var):
@@ -157,7 +141,6 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
     '''
     # print("Adding Variables ...")
     num_total_vars = 0
-    # NUM_NODES = len(ALL_NODES)
 
     all_in_out_vars = []
     all_source_vars = []
@@ -187,9 +170,6 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
             # [ Type-1 ] : SOURCE-node to (All Nodes, timestamp=1) flow variables
             if INIT==1:
                 if node_idx==INIT_NODES[server_idx]:
-                    # this must be 1
-                    # right now lb=1.0 and ub=1.0 has been done 
-                    # alternatively, don't do this rather set constraint that src_var==1 
                     src_var = model.addVar(
                                     lb=1.0, ub=1.0, obj=0.0, 
                                     vtype=GRB.CONTINUOUS,
@@ -203,8 +183,10 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
                                         )
             else:
                 src_var = model.addVar(
-                                        lb=0.0, ub=1.0, obj=0.0, 
+                                        lb=0.0, ub=1.0, 
+                                        obj=0.0, 
                                         vtype=GRB.CONTINUOUS,
+                                        # vtype=GRB.BINARY,
                                         name=f"{server_idx}_source_to_{node_idx}"
                                         )
             source_vars.append(src_var)
@@ -214,20 +196,25 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
             # ------------------------------------------------------------------------------------
             # [ Type-2 ] : (All Nodes, timestamp=len(NUM_TIMESTAMPS)) to SINK-node flow variables
             sink_var = model.addVar(
-                                lb=0.0, ub=1.0, obj=0.0, 
+                                lb=0.0, ub=1.0, 
+                                obj=0.0, 
                                 vtype=GRB.CONTINUOUS,
+                                # vtype=GRB.BINARY,
                                 name=f"{server_idx}_sink_to_{node_idx}"
                                 )
             sink_vars.append(sink_var)
-            ## These edges are teh only outgoing edges from the nodes at timestep=NUM_TIMESTAMPS-1
+            ## These edges are the only outgoing edges from the nodes at timestep=NUM_TIMESTAMPS-1
             in_out_vars[(node_idx, NUM_TIMESTAMPS)]['out'].append(sink_var)
             num_total_vars += 1
             # ------------------------------------------------------------------------------------
             # [ Type-3 ] : SELF-node flow variables 
             for timestamp in range(1, NUM_TIMESTAMPS, ODD):
                 self_var = model.addVar( 
-                                    lb=0.0, ub=UB, obj=0.0, 
-                                    vtype=GRB.CONTINUOUS, 
+                                    # lb=0.0, ub=UB,
+                                    lb=0.0, ub=1,  
+                                    obj=0.0, 
+                                    vtype=GRB.CONTINUOUS,
+                                    # vtype=GRB.BINARY, 
                                     name=f"{server_idx}_self_{node_idx}_{timestamp}_to_{timestamp+1}"
                                     )
                 # self_vars.append(self_var) # not really needed to store
@@ -251,8 +238,10 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
                 end_terminal_costs.append(cost)
 
             et_var = model.addVar(
-                                lb=0.0, ub=UB, obj=0.0,
-                                vtype=GRB.CONTINUOUS, 
+                                lb=0.0, ub=UB, 
+                                obj=0.0,
+                                vtype=GRB.CONTINUOUS,
+                                # vtype=GRB.BINARY, 
                                 name=f"{server_idx}_end-{end_node}_to_terminal-{term_node}"
                                 )
             end_terminal_vars.append(et_var)
@@ -272,7 +261,7 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
             placed_timestamp = begin_node[1]
             prepared_timestamp = end_node[1] 
             prep_time = prepared_timestamp - placed_timestamp
-            constant_speed = 20 # m/s
+            constant_speed = 1 # m/s
 
             # if weight_var=='dist':
             #     shortest_path_time = shortest_path_time/constant_speed 
@@ -299,19 +288,19 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
                     if (shortest_path_time <= prep_time): 
                         # flow-variables are added only for reachable cases
                         ien_var = model.addVar(
-                                            lb=0.0, ub=UB, obj=0.0,
-                                            vtype=GRB.CONTINUOUS, 
+                                            lb=0.0, ub=UB, 
+                                            obj=0.0,
+                                            vtype=GRB.CONTINUOUS,
+                                            # vtype=GRB.BINARY, 
                                             name=f"{server_idx}_request-{request_idx}:from-{(node_idx,timestamp)}_to_end-{end_node}"
                                             )
                         if weight_var=='dist':
-                            # scaling_factor = 15 # ??
                             try:
                                 cost = all_pairs_shortest_paths[node_idx][end_node_idx]['dist'] 
                             except:
                                 cost = all_pairs_shortest_paths[end_node_idx][node_idx]['dist']
-                            # cost += (prepared_timestamp-timestamp)*scaling_factor # in order to account for waiting time!
                         elif weight_var=='time':
-                            scaling_factor = 10 # ??
+                            scaling_factor = 10 
                             cost = shortest_path_time + scaling_factor*(prepared_timestamp - timestamp) # waiting time 
                         
                         in_out_vars[(node_idx, timestamp)]['out'].append(ien_var)
@@ -332,17 +321,14 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
                 into_end_node_costs.append(curr_request_costs)
 
 
-        # all_in_out_vars.append(deepcopy(in_out_vars)) # doesn't work! have to reinitialize the entire data in_out_vars data structure again for each server
         all_in_out_vars.append(in_out_vars)
         all_source_vars.append(source_vars)
         all_sink_vars.append(sink_vars)
         all_self_vars.append(self_vars)
         all_end_terminal_vars.append(end_terminal_vars)
-        # all_end_terminal_costs.append(end_terminal_costs)
         all_into_end_node_vars.append(into_end_node_vars)
-        # all_into_end_node_costs.append(into_end_node_costs)
 
-        del in_out_vars # since it can occupy GBs of RAM and it's going to be reinitialized in the next iteration! So this memory needs to be freed! 
+        del in_out_vars 
         gc.collect()
     # ------------------------------------------------------------------------------------       
     # [ Type-6 ] : (In)Feasibility variables
@@ -355,15 +341,17 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
                                         name=f"unserved_{request_idx}"
                                         )
         infeasibility_vars.append(infeasibility_var)
-        num_total_vars += 1
-    ## In this implementation, Infeasiblity variables are non-flow variables and are added separately to the end-terminal-flows 
-    ## In an alternate implementation, these vars could be considered as flow vars by adding an input edge to each end-node
-    
+        num_total_vars += 1  
     # ------------------------------------------------------------------------------------
     # [ Type-7 ] : Minimum Reward (or Earning) vairable 
     print("Adding Type-7 variables ...")
     ## this is the variable that'll be maximized in the maxmin objective
-    min_reward_var = model.addVar(lb=0.0, obj=0.0, vtype=GRB.CONTINUOUS, name="minimum reward/earning accumulated by any server") # NOT doing obj=1.0 here, 
+    min_reward_var = model.addVar(
+                                lb=0.0, 
+                                obj=0.0, 
+                                vtype=GRB.CONTINUOUS,
+                                # vtype=GRB.BINARY, 
+                                name="minimum reward/earning accumulated by any server") # NOT doing obj=1.0 here, 
                                                                            # rather delegating includsion of objective co-efficient to setObjective() method
     num_total_vars += 1
 
@@ -383,7 +371,6 @@ def construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, a
     print("Variables added!")
     print(f"TOTAL NUMBER OF *VARIABLES* IN THE MODEL : {num_total_vars}")
     logger.info(f"TOTAL NUMBER OF *VARIABLES* IN THE MODEL : {num_total_vars}")
-    # dillify_compress(vars_and_costs, filename=f"all_vars_and_costs_{weight_var}.dill")
     return all_vars_and_costs
 
 # ----------------------------------------------------------
@@ -415,6 +402,7 @@ def construct_and_set_constraints(model, vars_and_costs, only_last_mile=True):
     for server_idx in range(NUM_SERVERS):
         # [ Type-1 ] : Source-node out-flow = NUM_SERVERS <=> Source-node out-flow = 1 for each server 
         model.addConstr(gb.quicksum(source_vars[server_idx][node_idx] for node_idx in range(NUM_NODES))==1)
+        # model.addConstr(source_vars[server_idx][0]==1) # equivalent to all servers having initial locations at node 0 # WHY does this not work??
         num_total_constrs += 1 
 
         # [ Type-2 ] : Sink-node in-flow = NUM_SERVERS 
@@ -437,7 +425,6 @@ def construct_and_set_constraints(model, vars_and_costs, only_last_mile=True):
         last_mile_vars = end_terminal_vars[server_idx] 
        
         first_mile_reward = gb.LinExpr()  
-        # first_mile_reward = gb.QuadExpr() # when considering proportionality in first-mile-vars' contributions to the last-mile-var
         for request_idx in range(NUM_REQUESTS):
             curr_fm_vars = first_mile_vars[request_idx]
             curr_fm_costs = first_mile_costs[request_idx]
@@ -484,9 +471,6 @@ def construct_and_set_constraints(model, vars_and_costs, only_last_mile=True):
         model.addConstr(gb.quicksum(curr_constr_terms)==UB)
         num_total_constrs += 1
 
-    # model.addConstr(gb.quicksum(infeasibility_vars)==20)
-    # model.addConstr(min_reward_var<=7000.0)
-
     vars_and_costs['server_rewards'] = server_rewards
     print("Constraints added!")
     print(f"TOTAL NUMBER OF *CONSTRAINTS* IN THE MODEL : {num_total_constrs}")
@@ -501,9 +485,11 @@ def optimize_model(model, model_name):
     model.optimize()
     status = model.status 
     assert status==GRB.OPTIMAL, "An optimal solution could not be found !"
-    if city!='X':
+    if city in ['A','B','C']:
         path = os.path.join(data_path, 'results/offline', f'{model_name}_{NUM_REQUESTS}_{NUM_SERVERS}_{t_hrs}_{weight_var}.sol')
-    else:
+    elif city=='X':
+        path = os.path.join(data_path, 'results/offline', f'{model_name}_{NUM_REQUESTS}_{NUM_SERVERS}_{NUM_NODES}_{weight_var}.sol')
+    elif city=='Q':
         path = os.path.join(data_path, 'results/offline', f'{model_name}_{NUM_REQUESTS}_{NUM_SERVERS}_{NUM_NODES}_{weight_var}.sol')
     # model.write()
     return model
@@ -512,9 +498,9 @@ def optimize_model(model, model_name):
 
 def k_server_general(begin_nodes, end_nodes, terminal_nodes, all_pairs_shortest_paths, weight_var, only_last_mile, objective_type):
     ''' 
-    Efficient and Feasible solution:
-        for Efficiency: minimize the sum of ther server rewards 
-        for Feasibility: either set a very high infeasibility penalty 
+    Effective and Feasible solution:
+        Effective: minimize the sum of ther server rewards 
+        Feasible: either set a very high infeasibility penalty 
                         or add constraints that all infeasibility variables should be 0. (for this, make sure that there are enough number of servers) 
     '''
     ## Step-1: Instantiate gurobi Model
@@ -589,10 +575,11 @@ def k_server_general(begin_nodes, end_nodes, terminal_nodes, all_pairs_shortest_
         else:
             min_total_cost = total_last_mile_cost + min_first_mile_cost
             max_total_cost = total_last_mile_cost + max_first_mile_cost
-        return min_total_cost, max_total_cost 
+        # return min_total_cost, max_total_cost 
+        return total_last_mile_cost, min_total_cost, max_total_cost 
 
 
-    min_total_cost, max_total_cost = get_total_cost_lower_bound(weight_var, only_last_mile)
+    tot_last, min_total_cost, max_total_cost = get_total_cost_lower_bound(weight_var, only_last_mile)
     print(f"MINIMUM POSSIBLE COST: {min_total_cost}")
     print(f"MAXIMUM POSSIBLE COST: {max_total_cost}")
     logger.info(f"MINIMUM POSSIBLE COST: {min_total_cost}")
@@ -610,7 +597,8 @@ def k_server_general(begin_nodes, end_nodes, terminal_nodes, all_pairs_shortest_
         # for 'bound', we use the maxmin objective only but we'll add one more constraint;
         # the idea is that the sum of maxmin server_rewards should be bounded by a factor of the 'min' possible sum(server_rewards)
         alpha = bound_factor
-        model.addConstr(gb.quicksum(server_rewards)*(1/UB)<=alpha*min_total_cost)
+        # model.addConstr(gb.quicksum(server_rewards)*(1/UB)<=alpha*min_total_cost)
+        model.addConstr(gb.quicksum(server_rewards)*(1/UB)<=alpha*tot_last)
         objective = objectives['maxmin']
     else:
         objective = objectives[objective_type]    
@@ -635,7 +623,7 @@ def load_solution(begin_nodes, end_nodes, terminal_nodes, all_pairs_shortest_pat
     # Step-2: Add Variables 
     print("ADDING VARIABLES ...")
     # vars_and_costs = construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, all_pairs_shortest_paths, weight_var)
-    vars_and_costs = new_construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, all_pairs_shortest_paths, weight_var)
+    vars_and_costs = construct_and_set_variables(model, begin_nodes, end_nodes, terminal_nodes, all_pairs_shortest_paths, weight_var)
 
     # Step-3: Reading the solved model    
     model.read(f'{model_name}.sol')
@@ -704,321 +692,348 @@ def get_truncated_all_nodes_randomized(dist_dict, tot, k):
 
     return ALL_NODES
 
-# '''
+# ----------------------------------------------------------
+
+
 if __name__=='__main__':
     # get program inputs
     parser = argparse.ArgumentParser()
+    
+    ## common arguments
     parser.add_argument('--city', choices=['A', 'B', 'C'], default='A', 
                         type=str, required=True, help='City name')
-    parser.add_argument('--day', choices=[x for x in range(10)], default=1,
-                        type=int, required=True, help='Day index')
-    parser.add_argument('--t', choices=[-1]+[x for x in range(1,25)], default=-1, 
-                        type=int, required=True, help='Take orders that are placed upto t-hrs since 00:00:00')
+    parser.add_argument('--day', choices=[x for x in range(10)], default=1, 
+                        type=int, required=False, help='Day index') # not for 'synthetic'
     parser.add_argument('--weight_var', choices=['time', 'dist'], default='dist',
                         type=str, required=False, help='Weight variable for road network')
-    parser.add_argument('--only_last_mile', choices=[0, 1], default=False, 
-                        type=int, required=True, help='Consider only last-mile rewards (or costs)')
     parser.add_argument('--objective', choices=['maxmin', 'min', 'multi', 'bound'], default='maxmin', 
-                        type=str, required=False, help='Type of Objective function')
+                        type=str, required=True, help='Type of Objective function')
     parser.add_argument('--bound_factor', choices=[1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.0, 2.5, 5.0, 10.0], default=2.0,
                         type=float, required=False, help='optimal solution\'s of "bound" objective must be within "bound_factor" times the minimum possible cost')
-    parser.add_argument('--knn', choices=range(-1,1000),default=-1,
-                        type=int, required=True, help='Take only the k-nearest nodes to restaurant nodes in the road network')
-    parser.add_argument('--ub', choices=[0, 1],
-                        type=int, required=True, help='upper bound on the flow of end_terminal_edges; 0=>Symmetry Optimization employed!')
+    parser.add_argument('--ub', choices=[0, 1], default=0,
+                        type=int, required=False, help='upper bound on the flow of end_terminal_edges; 0=>Symmetry Optimization employed!')
+    parser.add_argument('--init', choices=[0,1], default=0,
+                        type=int, required=False, help='Consider the initial locations of the servers')
+    parser.add_argument('--only_last_mile', choices=[0, 1], default=0, 
+                        type=int, required=False, help='Consider only last-mile rewards (or costs)')
+    parser.add_argument('--batch_size', choices=[1,2,3,4,5,6,7,8,9,10], default=1, 
+                    type=int, required=False, help='Average batch-/cluster-size when "batching" is done') # currently batching is not supported
+    
+    ## food delivery specific args:
+    parser.add_argument('--t', choices=[-1]+[x for x in range(25)], default=-1, 
+                        type=int, required=False, help='Take orders that are placed upto t-hrs since 00:00:00')
+    parser.add_argument('--start', choices=[-1]+[x for x in range(25)], default=0, 
+                        type=int, required=False, help='Take orders that are placed upto t-hrs since 00:00:00')
+    parser.add_argument('--end', choices=[-1]+[x for x in range(25)], default=8, 
+                        type=int, required=False, help='Take orders that are placed upto t-hrs since 00:00:00')
+    parser.add_argument('--knn', choices=range(-1,1000),default=100,
+                        type=int, required=False, help='Take only the k-nearest nodes to restaurant nodes in the road network')
     parser.add_argument('--timestep', default=1,
                         type=int, required=False, help='The entire consists of "(86400//timestep)" units of time')
     parser.add_argument('--odd_dataset', choices=[1, 2], default=1,
                         type=int, required=False, help='whether to take odd timestamped data <=> slotted data with timestep=2 (choose 2 as input) AND distinct prep_tss !')
-    parser.add_argument('--init', choices=[0,1], default=0,
-                        type=int, required=False, help='Consider the initial locations of the servers')
-    parser.add_argument('--batch_size', choices=[1,2,3,4,5,6,7,8,9,10], default=1, 
-                    type=int, required=False, help='Average batch-/cluster-size when "batching" is done')
-    args = parser.parse_args()
-
-    # create input variables
-    city = args.city 
-    day = args.day 
-    t_hrs = args.t
-    weight_var = args.weight_var
-    only_last_mile = args.only_last_mile
-    objective = args.objective
-    bound_factor = args.bound_factor
-    knn = args.knn
-    UB = args.ub
-    timestep = args.timestep 
-    ODD = args.odd_dataset
-    INIT = args.init
-    batch_size = args.batch_size 
-    # finally, 
-    if INIT==1: UB =  1 
-
-    # metadata
-    data_path = '/home/daman/Desktop/k_server/code/data/'
-    logs_path = os.path.join(data_path, city, 'logs')
-    _intervals_path = os.path.join(data_path, city, f'drivers/{day}')
-    ints_path = os.path.join(data_path, city, f'drivers/{day}/de_intervals')
-    # ints_path = f'/home/daman/Desktop/code_food/data/de_data/{city}_de_data/{day}/de_intervals'
-    drivers_init_path = os.path.join(data_path, f'{city}/drivers/{day}/driver_init_nodes.csv')
-    name2id = {'A':10, 'B':1, 'C':4}
-    id2name = {v:k for k,v in name2id.items()}
-
-    # LOAD DATA
-    print("Loading data ...") 
-    if timestep==1:
-        orders_data = pd.read_csv(os.path.join(data_path, f'{city}/orders/{day}/final_orders.csv'))
-        # orders_data = orders_data.rename(columns={'rest_node':'begin_node', 'cust_node':'end_node'})
-    else:
-        # this violates distinct prep_ts assumption
-        orders_data = pd.read_csv(os.path.join(data_path, f'{city}/orders/{day}/final_orders_slotted_{timestep}.csv'))
     
-    if ODD==2:
-        orders_data = pd.read_csv(os.path.join(data_path, f'{city}/orders/{day}/final_orders_odd_timestamps.csv'))
-        
-    apsp_dist = depicklify(os.path.join(data_path, f'{city}/map/{day}/apsp/all_pair_shortest_paths_dist_t={t_hrs}.pkl'))
-    apsp_time = depicklify(os.path.join(data_path, f'{city}/map/{day}/apsp/all_pair_shortest_paths_time_t={t_hrs}.pkl'))   
-    # the above 2 files only contain the shortest paths between the restaruant nodes active within the first t_hrs and all other nodes in the road network.           
-    road_net = pd.read_csv(os.path.join(data_path, f'{city}/map/{day}/u_v_time_dist'), header=None, sep=' ', names=['u', 'v', 'time', 'dist'])
-    idx2node = pd.read_csv(os.path.join(data_path, f'{city}/map/index_to_node_id.csv'), header=None, names=['idx', 'node_id'])
-    node2idx = pd.read_csv(os.path.join(data_path, f'{city}/map/node_id_to_index.csv'), header=None, names=['node_id', 'idx'])
-    
-    # consider only those orders placed until t_hrs since 00:00:00
-    orig_orders_data = deepcopy(orders_data)
-    orders_data = orders_data[orders_data.placed_time <= t_hrs*3600] 
-    # orders_data = orders_data[orders_data.placed_time <= 1800] # 30-minutes
-    # orders_data = orders_data[orders_data.placed_time <= 600] # 10-minutes
-    # orders_data = orders_data[orders_data.placed_time <= 300] # 5-minutes
-    # orders_data = orders_data[orders_data.placed_time <= 120] # 2-minutes
-    if INIT: 
-        orders_data = orders_data[orders_data.placed_time <= 120] # 2-minutes # less time since each server must have a separate flow in this case
-
-    # # consider only those orders placed in the t-th hour
-    # orders_data = orders_data[((t_hrs-1)*3600) <= orders_data.placed_time <= (t_hrs*3600)] 
-
-    # Create required variables and data 
-    ALL_NODES = idx2node.idx.values # or np.arange(idx2node.shape[0])
-    NUM_NODES = idx2node.shape[0]  # or len(ALL_NODES)
-
-    # for t_hrs==1, NUM_TIMESTAMPS is about 6000; NUM_NODES~40K is the bottleneck (in_out_vars takes ~160GB of RAM!!)
-    # therefore, we'll only consider "knn" nearest nodes to each restaurant node (recall that restaurant nodes are represented by node_id's of end_nodes)
-    
-    # MODEL INPUTS
-    begin_nodes, end_nodes, terminal_nodes, requests = parse_requests(orders_data)
-    all_pairs_shortest_paths = parse_all_pair_shortest_paths(apsp_dist=apsp_dist, apsp_time=apsp_time)
-    # k-nearest nodes:
-    tot = 1000
-    print(f"Considering {knn}-nearest nodes to each restaurant node only!")
-    print(f"Original NUM_NODES:{NUM_NODES}") 
-    # ALL_NODES = get_truncated_all_nodes(apsp_time, knn)  
-    ALL_NODES = get_truncated_all_nodes_randomized(apsp_time, tot, knn) 
-    # 'apsp_time' makes more sense than 'apsp_dist' while generating ALL_NODES since edges incident on end_nodes are filetered for reachability using 'time'
-    if knn!=-1:
-        term_node_indices = set([node[0] for node in terminal_nodes])
-        ALL_NODES = ALL_NODES.union(term_node_indices)
-        NUM_NODES = len(ALL_NODES)
-        print(f"New NUM_NODES:{len(ALL_NODES)}") 
-    ALL_NODES = list(ALL_NODES)
-
-
-    ###### INPUT SUMMARY BEGINS ###########
-    NUM_REQUESTS = orders_data.shape[0] 
-    total_num_rests = orig_orders_data['rest_node'].unique().shape[0] 
-    # let's assume that this (#active restaurants in day "day") is the max number of drivers active at the same the during a day 
-    curr_num_rests = orders_data['rest_node'].unique().shape[0] # number of active restaurants in chosen subset of data
-    num_active_servers = get_active_servers(ints_path, t_hrs)
-    _NUM_SERVERS = min(num_active_servers, NUM_REQUESTS) 
-
-    if UB==1: 
-        # maintain separate flows
-        NUM_SERVERS = _NUM_SERVERS
-    else:
-        # symmetry optimization  
-        NUM_SERVERS = 1 
-        UB = 1/(_NUM_SERVERS)
-
-    if INIT: # better for real-data
-        curr_rest_nodes = list(orders_data['rest_node'].unique())
-        INIT_NODES = random.choices(curr_rest_nodes, k=NUM_SERVERS)
-
-    max_deliver_timestamp = np.max(orders_data['deliver_ts'].values)
-    NUM_TIMESTAMPS = max_deliver_timestamp  # time-step = 1 second # 1 day = 86400 seconds
-    # ALL_TIMESTAMPS = np.arange(NUM_TIMESTAMPS) 
-    # NUM_VARS = NUM_NODES * NUM_TIMESTAMPS # final number of nodes in the LP and Flow network
-    MAX_FPT = np.max(orders_data.prep_time.values)
-    MEAN_DELIVERY_TIME = np.mean(orders_data.deliver_time.values)
-    MEAN_DELIVERY_DIST = np.mean(orders_data.deliver_dist.values)
-    MAX_DELIVERY_TIME = np.max(orders_data.deliver_time.values)
-    MAX_DELIVERY_DIST = np.max(orders_data.deliver_dist.values)
-
-    print(f"# Points in the metric space (or # Nodes in road network): {NUM_NODES}")
-    print(f"# Total time stamps possible: {NUM_TIMESTAMPS}")
-    print(f"Number of requests (or orders): {NUM_REQUESTS}")
-    print(f"Number of servers (or drivers): {_NUM_SERVERS}")
-    # print(f"Total number of nodes in the LP or Flow network: {NUM_VARS}")
-    # # There exist 97282 edges in the road network
-    
-    # GET LOGGER:
-    global logger
-    log_filename = ''
-    if INIT: log_filename = f"{day}_INIT_{t_hrs}_{NUM_REQUESTS}_{_NUM_SERVERS}_{weight_var}.log" 
-    elif ODD==2: log_filename = f"{day}_ODD_{t_hrs}_{NUM_REQUESTS}_{_NUM_SERVERS}_{weight_var}.log" 
-    elif timestep>1: log_filename = f"{day}_SLOT_{t_hrs}_{NUM_REQUESTS}_{_NUM_SERVERS}_{weight_var}.log"
-    else: log_filename = f"{day}_{t_hrs}_{NUM_REQUESTS}_{_NUM_SERVERS}_{weight_var}.log"
-    logger = get_logger(logs_path, log_filename) 
-
-    logger.info(f"NUM_NODES : {NUM_NODES}")
-    logger.info(f"NUM_REQUESTS : {NUM_REQUESTS}")
-    logger.info(f"NUM_SERVERS : {_NUM_SERVERS}")
-    logger.info(f"NUM_TIMESTAMPS : {NUM_TIMESTAMPS}")
-    logger.info(f"t : {t_hrs}")
-    ########## INPUT SUMMARY ENDS #################
-    # breakpoint()
-
-    # SOLVING #
-    solve_start_time = time.time()  
-    print("Optimization started ...")
-    model, vars_and_costs = k_server_general(begin_nodes, end_nodes, terminal_nodes, 
-                                            all_pairs_shortest_paths, weight_var, only_last_mile, objective)
-    solve_end_time = time.time() 
-    solve_time = solve_end_time - solve_start_time
-    print(f"Execution time : {solve_time/3600} hrs")
-    logger.info(f"Execution time : {solve_time/3600} hrs")
-    # breakpoint()
-
-    # Evaluation:
-    num_inf, request_feasibilities = calculate_infeasibility(vars_and_costs)
-    unserved_percentage = (num_inf*100)/NUM_REQUESTS    
-    print(f"{num_inf} out of {NUM_REQUESTS} requests ({unserved_percentage}%) remain unserved!")
-    logger.info(f"{num_inf} out of {NUM_REQUESTS} requests ({unserved_percentage}%) remain unserved!")
-    logger.info(f"Request feasibilities : {request_feasibilities}")
-
-    print()
-    server_rewards = get_server_rewards(vars_and_costs, NUM_SERVERS, NUM_REQUESTS, ALL_NODES, only_last_mile)
-    # if server_rewards==1 : server_rewards[0] is the sum of the server_rewards of all _NUM_SERVERS 
-    for s_idx, reward in enumerate(server_rewards):
-        print(f"Reward of server #{s_idx}: {reward}")
-        logger.info(f"Reward of server #{s_idx}: {reward}")
-
-    optimal_cost = get_optimal_cost(model) 
-    print(f"Optimal cost : {optimal_cost}")
-    logger.info(f"Optimal cost : {optimal_cost}")
-
-    breakpoint()
-    # return ALL_NODES, NUM_NODES, NUM_REQUESTS, NUM_TIMESTAMPS, NUM_SERVERS, UB, ODD, INIT
-# '''
-
-'''
-# main() for SYNTHETIC data
-if __name__=='__main__':
-    # get program inputs
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--city', choices=['X'], default='X', 
-                        type=str, required=False, help='City name')
+    ## only synthetic data specific args:
     parser.add_argument('--num_timesteps', choices=[100,200,500,1000,2000],
                         type=int, required=True)
     parser.add_argument('--num_nodes', choices=[50,100,500,1000], 
                         type=int, required=True, help='# nodes in metric space')
     parser.add_argument('--num_requests', choices=[10,30,50,100,250,500,1000],
                         type=int, required=True)
-    parser.add_argument('--num_servers', choices=[5,10,20,25,30,50,100,150,200,250],
+    parser.add_argument('--num_servers', choices=[5,10,20,25,30,50,100,150,200,250,400,500],
                         type=int, required=True)
     parser.add_argument('--edge_prob', choices=[0.1,0.2,0.5,0.6,0.7,0.9], default=0.5, 
                         type=float, required=False)
-    parser.add_argument('--weight_var', choices=['time', 'dist'], default='dist',
-                        type=str, required=False, help='Weight variable for road network')
-    parser.add_argument('--only_last_mile', choices=[0, 1], default=False, 
-                        type=int, required=True, help='Consider only last-mile rewards (or costs)')
-    parser.add_argument('--objective', choices=['maxmin', 'min', 'multi', 'bound'], default='maxmin', 
-                        type=str, required=False, help='Type of Objective function')
-    parser.add_argument('--bound_factor', choices=[1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.0, 2.5, 5.0, 10.0], default=2.0,
-                        type=float, required=False, help='optimal solution\'s of "bound" objective must be within "bound_factor" times the minimum possible cost')
-    parser.add_argument('--ub', choices=[0, 1],
-                        type=int, required=True, help='upper bound on the flow of end_terminal_edges; 0=>Symmetry Optimization employed!')
-    parser.add_argument('--init', choices=[0,1], default=0,
-                        type=int, required=False, help='Consider the initial locations of the servers')
-    parser.add_argument('--batch_size', choices=[1,2,3,4,5,6,7,8,9,10], default=1, 
-                        type=int, required=False, help='Average batch-/cluster-size when "batching" is done')
+    
+
+    ## only quick commerce data specific args: None
+
+
     args = parser.parse_args()
-
-    # create input variables
-    city = args.city   
-    NUM_TIMESTEPS = args.num_timesteps
-    NUM_NODES = args.num_nodes
-    NUM_REQUESTS = args.num_requests 
-    NUM_SERVERS = args.num_servers
-    edge_prob = args.edge_prob
-    weight_var = args.weight_var
-    only_last_mile = args.only_last_mile
-    objective = args.objective
-    bound_factor = args.bound_factor
-    UB = args.ub
-    INIT = args.init
-    batch_size = args.batch_size 
-    # finally, 
-    if INIT==1: UB =  1 
-    ODD = 1
-    timestep = 1
-
-    # metadata
-    data_path = '/home/daman/Desktop/k_server/code/data/'
-    logs_path = os.path.join(data_path, city, 'logs')
-    ints_path = os.path.join(data_path, city, 'drivers/de_intervals')
-    drivers_init_path = os.path.join(data_path, f'{city}/drivers/init_nodes_{NUM_REQUESTS}_{NUM_NODES}.csv')
-
-    # LOAD DATA
-    print("Loading data ...") 
-    orders_data = pd.read_csv(os.path.join(data_path, f'{city}/orders/orders_{NUM_REQUESTS}_{NUM_NODES}_{NUM_TIMESTEPS}.csv'))
-    apsp_dist = depicklify(os.path.join(data_path, f'{city}/map/apsp_dist_{NUM_NODES}_p{edge_prob}.pkl'))
-    apsp_time = depicklify(os.path.join(data_path, f'{city}/map/apsp_time_{NUM_NODES}_p{edge_prob}.pkl'))
-    road_net = pd.read_csv(os.path.join(data_path, f'{city}/map/metric_space_{NUM_NODES}_p{edge_prob}.csv'))
-
-    ALL_NODES = range(1, NUM_NODES+1)
-
-    # MODEL INPUTS 
-    begin_nodes, end_nodes, terminal_nodes, requests = parse_requests(orders_data)
-    all_pairs_shortest_paths = parse_all_pair_shortest_paths(apsp_dist, apsp_time)
-    _NUM_SERVERS = min(NUM_SERVERS, NUM_REQUESTS)
+    city = args.city # this variable decides the dataset
     
-    if UB==1: NUM_SERVERS = _NUM_SERVERS
+    data_path = './data/'
+
+    if city=='A': 
+        '''
+        FOOD DELIVERY DATASET
+        '''
+        day = args.day 
+        start = args.start 
+        t_hrs = args.end
+        weight_var = args.weight_var
+        only_last_mile = args.only_last_mile
+        objective = args.objective
+        bound_factor = args.bound_factor
+        knn = args.knn
+        UB = args.ub
+        timestep = args.timestep 
+        ODD = args.odd_dataset
+        INIT = args.init
+        batch_size = args.batch_size 
+      
+        # metadata
+        logs_path = os.path.join(data_path, city, 'logs')
+        ensure_dir(logs_path)
+        _intervals_path = os.path.join(data_path, city, f'drivers/{day}')
+        ints_path = os.path.join(data_path, city, f'drivers/{day}/de_intervals')
+        drivers_init_path = os.path.join(data_path, f'{city}/drivers/{day}/driver_init_nodes.csv')
+        name2id = {'A':10, 'B':1, 'C':4}
+        id2name = {v:k for k,v in name2id.items()}
+
+        # LOAD DATA
+        print("Loading data ...") 
+        if timestep==1: orders_data = pd.read_csv(os.path.join(data_path, f'{city}/orders/{day}/final_orders.csv')) 
+        else: # this violates distinct prep_ts assumption
+            orders_data = pd.read_csv(os.path.join(data_path, f'{city}/orders/{day}/final_orders_slotted_{timestep}.csv'))
+        
+        if ODD==2: orders_data = pd.read_csv(os.path.join(data_path, f'{city}/orders/{day}/final_orders_odd_timestamps.csv'))
+            
+        apsp_dist = depicklify(os.path.join(data_path, f'{city}/map/{day}/apsp/all_pair_shortest_paths_dist_t={t_hrs}.pkl'))
+        apsp_time = depicklify(os.path.join(data_path, f'{city}/map/{day}/apsp/all_pair_shortest_paths_time_t={t_hrs}.pkl'))   
+        # the above 2 files only contain the shortest paths between the restaruant nodes active within the first t_hrs and all other nodes in the road network.           
+        
+        road_net = pd.read_csv(os.path.join(data_path, f'{city}/map/{day}/u_v_time_dist'), header=None, sep=' ', names=['u', 'v', 'time', 'dist'])
+        idx2node = pd.read_csv(os.path.join(data_path, f'{city}/map/index_to_node_id.csv'), header=None, names=['idx', 'node_id'])
+        node2idx = pd.read_csv(os.path.join(data_path, f'{city}/map/node_id_to_index.csv'), header=None, names=['node_id', 'idx'])
+        
+        # consider only those orders placed until t_hrs since 00:00:00
+        orig_orders_data = deepcopy(orders_data)
+        orders_data = orders_data[(orders_data.placed_time>=start*3600) & (orders_data.placed_time<=(t_hrs-0.75)*3600)]
+        
+        # Create required variables and data 
+        ALL_NODES = idx2node.idx.values # or np.arange(idx2node.shape[0])
+        NUM_NODES = idx2node.shape[0]  # or len(ALL_NODES)
+
+
+        # MODEL INPUTS
+        begin_nodes, end_nodes, terminal_nodes, requests = parse_requests(orders_data)
+        all_pairs_shortest_paths = parse_all_pair_shortest_paths(apsp_dist=apsp_dist, apsp_time=apsp_time)
+        # k-nearest nodes: # considering partial road-network for tractability --> this gives an approximation of the true MILP solution
+        tot = 1000 
+        print(f"Considering {knn}-nearest nodes to each restaurant node only!")
+        print(f"Original NUM_NODES:{NUM_NODES}") 
+        # ALL_NODES = get_truncated_all_nodes(apsp_time, knn)  
+        ALL_NODES = get_truncated_all_nodes_randomized(apsp_time, tot, knn) 
+        # 'apsp_time' makes more sense than 'apsp_dist' while generating ALL_NODES since edges incident on end_nodes are filetered for reachability using 'time'
+        if knn!=-1:
+            term_node_indices = set([node[0] for node in terminal_nodes])
+            ALL_NODES = ALL_NODES.union(term_node_indices)
+            NUM_NODES = len(ALL_NODES)
+            print(f"New NUM_NODES:{len(ALL_NODES)}") 
+        ALL_NODES = list(ALL_NODES)
+
+
+        ###### INPUT SUMMARY BEGINS ###########
+        NUM_REQUESTS = orders_data.shape[0] 
+        total_num_rests = orig_orders_data['rest_node'].unique().shape[0] 
+        curr_num_rests = orders_data['rest_node'].unique().shape[0] # number of active restaurants in chosen subset of data
+        num_active_servers = get_active_servers(ints_path, t_hrs)
+        _NUM_SERVERS = min(num_active_servers, NUM_REQUESTS) 
+        # We don't want NUM_SERVERS>NUM_REQUESTS because fractional servers treatment can't work with such scenarios
+        # as it might lead to no infeasibility (by dividing each server equally among all requests) even when it's a clear case of infeasibility!
+
+        if UB==1: # maintain separate flows
+            NUM_SERVERS = _NUM_SERVERS
+        else: # symmetry optimization --> k=1 with edge-weight adjustment works because the optimal solution anyways has identical flows for all servers
+            NUM_SERVERS = 1 
+            UB = 1/(_NUM_SERVERS)
+
+        if INIT: # better for real-data
+            curr_rest_nodes = list(orders_data['rest_node'].unique())
+            INIT_NODES = random.choices(curr_rest_nodes, k=NUM_SERVERS)
+
+        min_deliver_timestep = np.min(orders_data['deliver_ts'].values)
+        max_deliver_timestamp = np.max(orders_data['deliver_ts'].values)
+        NUM_TIMESTAMPS = max_deliver_timestamp # time-step = 1 second # 1 day = 86400 seconds
+        MAX_FPT = np.max(orders_data.prep_time.values)
+        MEAN_DELIVERY_TIME = np.mean(orders_data.deliver_time.values)
+        MEAN_DELIVERY_DIST = np.mean(orders_data.deliver_dist.values)
+        MAX_DELIVERY_TIME = np.max(orders_data.deliver_time.values)
+        MAX_DELIVERY_DIST = np.max(orders_data.deliver_dist.values)
+
+        print(f"# Points in the metric space (or # Nodes in road network): {NUM_NODES}")
+        print(f"# Total time stamps possible: {NUM_TIMESTAMPS}")
+        print(f"Number of requests (or orders): {NUM_REQUESTS}")
+        print(f"Number of servers (or drivers): {_NUM_SERVERS}")
+        # print(f"Total number of nodes in the LP or Flow network: {NUM_VARS}")
+        # There exist 97282 edges in the road network
+        
+        # GET LOGGER:
+        global logger
+        log_filename = ''
+        if INIT: log_filename = f"{day}_INIT_{t_hrs}_{NUM_REQUESTS}_{_NUM_SERVERS}_{weight_var}.log" 
+        elif ODD==2: log_filename = f"{day}_ODD_{t_hrs}_{NUM_REQUESTS}_{_NUM_SERVERS}_{weight_var}.log" 
+        elif timestep>1: log_filename = f"{day}_SLOT_{t_hrs}_{NUM_REQUESTS}_{_NUM_SERVERS}_{weight_var}.log"
+        else: log_filename = f"{day}_{t_hrs}_{NUM_REQUESTS}_{_NUM_SERVERS}_{weight_var}.log"
+        logger = get_logger(logs_path, log_filename) 
+
+        logger.info(f"NUM_NODES : {NUM_NODES}")
+        logger.info(f"NUM_REQUESTS : {NUM_REQUESTS}")
+        logger.info(f"NUM_SERVERS : {_NUM_SERVERS}")
+        logger.info(f"NUM_TIMESTAMPS : {NUM_TIMESTAMPS}")
+        logger.info(f"t : {t_hrs}")
+        ########## INPUT SUMMARY ENDS #################
+    
+
+    elif city=='X':
+        '''
+        SYNTHETIC DATASET
+        '''
+        NUM_TIMESTEPS = args.num_timesteps
+        NUM_NODES = args.num_nodes
+        NUM_REQUESTS = args.num_requests 
+        NUM_SERVERS = args.num_servers
+        edge_prob = args.edge_prob
+        weight_var = args.weight_var
+        only_last_mile = args.only_last_mile
+        objective = args.objective
+        bound_factor = args.bound_factor
+        UB = args.ub
+        INIT = args.init
+        batch_size = args.batch_size 
+        if INIT==1: UB =  1 
+        ODD = 1
+        timestep = 1
+
+        # metadata
+        logs_path = os.path.join(data_path, city, 'logs')
+        ensure_dir(logs_path)
+        drivers_init_path = os.path.join(data_path, f'{city}/drivers/init_nodes_{NUM_REQUESTS}_{NUM_NODES}.csv')
+
+        # LOAD DATA
+        print("Loading data ...") 
+        orders_data = pd.read_csv(os.path.join(data_path, f'{city}/orders/orders_{NUM_REQUESTS}_{NUM_NODES}_{NUM_TIMESTEPS}.csv'))
+        apsp_dist = depicklify(os.path.join(data_path, f'{city}/map/apsp_dist_{NUM_NODES}_p{edge_prob}.pkl'))
+        apsp_time = depicklify(os.path.join(data_path, f'{city}/map/apsp_time_{NUM_NODES}_p{edge_prob}.pkl'))
+        road_net = pd.read_csv(os.path.join(data_path, f'{city}/map/metric_space_{NUM_NODES}_p{edge_prob}.csv'))
+
+        ALL_NODES = range(1, NUM_NODES+1)
+
+        # MODEL INPUTS 
+        begin_nodes, end_nodes, terminal_nodes, requests = parse_requests(orders_data)
+        all_pairs_shortest_paths = parse_all_pair_shortest_paths(apsp_dist, apsp_time)
+        _NUM_SERVERS = min(NUM_SERVERS, NUM_REQUESTS)
+        
+        if UB==1: NUM_SERVERS = _NUM_SERVERS
+        else:
+            NUM_SERVERS = 1
+            UB = 1/(_NUM_SERVERS)
+        
+        if INIT: 
+            curr_rest_nodes = list(orders_data['rest_node'].unique())
+            INIT_NODES = random.choices(curr_rest_nodes, k=NUM_SERVERS)
+
+        max_deliver_timestamp = np.max(orders_data['deliver_ts'].values)
+        NUM_TIMESTAMPS = max_deliver_timestamp  # time-step = 1 second # 1 day = 86400 seconds
+        MAX_FPT = np.max(orders_data.prep_time.values)
+        MEAN_DELIVERY_TIME = np.mean(orders_data.deliver_time.values)
+        MEAN_DELIVERY_DIST = np.mean(orders_data.deliver_dist.values)
+        MAX_DELIVERY_TIME = np.max(orders_data.deliver_time.values)
+        MAX_DELIVERY_DIST = np.max(orders_data.deliver_dist.values)
+
+        ###### INPUT SUMMARY BEGINS ###########
+        print(f"# Points in the metric space (or # Nodes in road network): {NUM_NODES}")
+        print(f"# Total time stamps possible: {NUM_TIMESTAMPS}")
+        print(f"Number of requests (or orders): {NUM_REQUESTS}")
+        print(f"Number of servers (or drivers): {_NUM_SERVERS}")
+
+        # GET LOGGER:
+        global logger
+        log_filename = ''
+        if INIT: log_filename = f"INIT_{NUM_REQUESTS}_{_NUM_SERVERS}_{NUM_NODES}_{weight_var}.log" 
+        else: log_filename = f"{NUM_REQUESTS}_{_NUM_SERVERS}_{NUM_NODES}_{weight_var}.log"
+        logger = get_logger(logs_path, log_filename) 
+
+        logger.info(f"NUM_NODES : {NUM_NODES}")
+        logger.info(f"NUM_REQUESTS : {NUM_REQUESTS}")
+        logger.info(f"NUM_SERVERS : {_NUM_SERVERS}")
+        logger.info(f"NUM_TIMESTAMPS : {NUM_TIMESTAMPS}")
+        ########## INPUT SUMMARY ENDS ################# 
+
+
+    elif city=='Q':
+        '''
+        QUICK COMMERCE DATASET
+        '''
+        day = args.day
+        NUM_TIMESTAMPS = 5000 
+        weight_var = args.weight_var
+        only_last_mile = args.only_last_mile
+        objective = args.objective
+        bound_factor = args.bound_factor
+        UB = args.ub
+        INIT = args.init
+        GAMMA = 1
+        ODD = 1
+        timestep = 1
+
+        # metadata
+        data_path = './data/'
+        logs_path = os.path.join(data_path, city, 'logs')
+        ensure_dir(logs_path)
+
+        # LOAD DATA
+        print("Loading data ...") 
+        orders_data = pd.read_csv(os.path.join(data_path, f'{city}/orders/orders_{day}.csv'))
+        nodes = pd.read_csv(os.path.join(data_path, f'{city}/map/_nodes.csv'))
+        rests = pd.read_csv(os.path.join(data_path, f'{city}/orders/rests.csv'))
+        requestNodes = rests.rest_node.values
+        apsp = depicklify(os.path.join(data_path, f'{city}/map/apsp.pkl'))
+        paths = depicklify(os.path.join(data_path, f"{city}/map/paths.pkl"))
+        NUM_NODES = nodes.shape[0]
+        NUM_RESTS = rests.shape[0]
+        NUM_REQUESTS = orders_data.shape[0]
+        ALL_NODES = range(1,NUM_NODES+1)
+
+        NUM_SERVERS = 200 
+        INIT_NODES = ['src']*NUM_SERVERS
+
+        # MODEL INPUTS 
+        begin_nodes, end_nodes, terminal_nodes, requests = parse_requests(orders_data)
+        all_pairs_shortest_paths = apsp # parse_all_pair_shortest_paths(apsp_dist, apsp_time)
+        _NUM_SERVERS = min(NUM_SERVERS, NUM_REQUESTS)
+        
+        if UB==1: NUM_SERVERS = _NUM_SERVERS
+        else:
+            NUM_SERVERS = 1
+            UB = 1/(_NUM_SERVERS)
+        
+        if INIT: 
+            curr_rest_nodes = list(orders_data['rest_node'].unique())
+            INIT_NODES = random.choices(curr_rest_nodes, k=NUM_SERVERS)
+
+        ## INPUT SUMMARY BEGINS ##
+        max_deliver_timestamp = np.max(orders_data.deliver_ts.values)
+        MAX_FPT = np.max(orders_data.prep_time.values)
+        MEAN_DELIVERY_TIME = np.mean(orders_data.deliver_time.values)
+        MEAN_DELIVERY_DIST = np.mean(orders_data.deliver_dist.values)
+        MAX_DELIVERY_TIME = np.max(orders_data.deliver_time.values)
+        MAX_DELIVERY_DIST = np.max(orders_data.deliver_dist.values)
+
+        print(f"# Points in the metric space (or #Nodes in road network):{NUM_NODES}")
+        print(f"# Total timestamps possible: {NUM_TIMESTAMPS}")
+        print(f"Number of requests (or orders): {NUM_REQUESTS}")
+        print(f"Number of servers (or drivers): {NUM_SERVERS}")
+
+        # GET LOGGER:
+        global logger
+        log_filename = ''
+        if INIT: log_filename = f"online_INIT_{NUM_REQUESTS}_{NUM_SERVERS}_{NUM_NODES}_{weight_var}.log" 
+        else: log_filename = f"{objective}{only_last_mile}_online_{NUM_REQUESTS}_{NUM_SERVERS}_{NUM_NODES}_{weight_var}.log"
+        logger = get_logger(logs_path, log_filename) 
+
+        logger.info(f"NUM_NODES : {NUM_NODES}")
+        logger.info(f"NUM_REQUESTS : {NUM_REQUESTS}")
+        logger.info(f"NUM_SERVERS : {NUM_SERVERS}")
+        logger.info(f"NUM_TIMESTAMPS : {NUM_TIMESTAMPS}")
+        ########## INPUT SUMMARY ENDS #################
+
+
     else:
-        NUM_SERVERS = 1
-        UB = 1/(_NUM_SERVERS)
-    
-    if INIT: # better for real-data
-        curr_rest_nodes = list(orders_data['rest_node'].unique())
-        INIT_NODES = random.choices(curr_rest_nodes, k=NUM_SERVERS)
-    # if INIT: # better for synthetic data
-    #     INIT_NODES = get_init_nodes(drivers_init_path)
+        assert False, "Invalid selection of Dataset!"
 
-    max_deliver_timestamp = np.max(orders_data['deliver_ts'].values)
-    NUM_TIMESTAMPS = max_deliver_timestamp  # time-step = 1 second # 1 day = 86400 seconds
-    # ALL_TIMESTAMPS = np.arange(NUM_TIMESTAMPS) 
-    # NUM_VARS = NUM_NODES * NUM_TIMESTAMPS # final number of nodes in the LP and Flow network
-    MAX_FPT = np.max(orders_data.prep_time.values)
-    MEAN_DELIVERY_TIME = np.mean(orders_data.deliver_time.values)
-    MEAN_DELIVERY_DIST = np.mean(orders_data.deliver_dist.values)
-    MAX_DELIVERY_TIME = np.max(orders_data.deliver_time.values)
-    MAX_DELIVERY_DIST = np.max(orders_data.deliver_dist.values)
 
-    ###### INPUT SUMMARY BEGINS ###########
-    print(f"# Points in the metric space (or # Nodes in road network): {NUM_NODES}")
-    print(f"# Total time stamps possible: {NUM_TIMESTAMPS}")
-    print(f"Number of requests (or orders): {NUM_REQUESTS}")
-    print(f"Number of servers (or drivers): {_NUM_SERVERS}")
-
-    # GET LOGGER:
-    global logger
-    log_filename = ''
-    if INIT: log_filename = f"INIT_{NUM_REQUESTS}_{_NUM_SERVERS}_{NUM_NODES}_{weight_var}.log" 
-    else: log_filename = f"{NUM_REQUESTS}_{_NUM_SERVERS}_{NUM_NODES}_{weight_var}.log"
-    logger = get_logger(logs_path, log_filename) 
-
-    logger.info(f"NUM_NODES : {NUM_NODES}")
-    logger.info(f"NUM_REQUESTS : {NUM_REQUESTS}")
-    logger.info(f"NUM_SERVERS : {_NUM_SERVERS}")
-    logger.info(f"NUM_TIMESTAMPS : {NUM_TIMESTAMPS}")
-    ########## INPUT SUMMARY ENDS ################# 
-    # breakpoint()
     # SOLVING #
     solve_start_time = time.time()  
     print("Optimization started ...")
@@ -1028,7 +1043,6 @@ if __name__=='__main__':
     solve_time = solve_end_time - solve_start_time
     print(f"Execution time : {solve_time/3600} hrs")
     logger.info(f"Execution time : {solve_time/3600} hrs")
-    breakpoint()
 
     # Evaluation:
     num_inf, request_feasibilities = calculate_infeasibility(vars_and_costs)
@@ -1055,4 +1069,4 @@ if __name__=='__main__':
     avg_dist = get_avg_distance(server_rewards)
     print(f"Avg. Dist. : {avg_dist}")
     logger.info(f"Avg. Dist. : {avg_dist}")
-# '''
+
