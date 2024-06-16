@@ -22,7 +22,6 @@ Additionally, access to Gurobi Optimizer is required. Access to Gurobi's academi
 	* After getting the data, structure it in the format specified in [./data/A/meta.md](./data/A/meta.md)
 * The scripts to generate the completely synthetic datasets (SynSparse and SynDense) and the semi-synthetic quick-commerce dataset are present in [./data_gen/Q](./data_gen/Q) and [./data_gen/Q](./data_gen/Q), respectively. Ensure that the datasets follows the format specified in [./data/X/meta.md](./data/X/meta.md) for synthetich dataset(s) and in [./data/Q/meta.md](./data/Q/meta.md) quick-commerce dataset.
 	* To get exemplar, already generated, instances of these datasets, please mail [here](damandeepddsb@gmail.com) with "[FAIR-KSERVER]: DATA REQUEST" as the subject. 
-* Ensure that each dataset directory follows the following structure:
 
 
 ## Running the code
