@@ -76,3 +76,19 @@ Additionally, access to Gurobi Optimizer is required. Access to Gurobi's academi
 		```	
 		- for other auxiliary arguments, refer `./src/online_solution.py`
 
+## BibTex (Citation)
+If you find our work useful, please cite using:
+```
+@article{Singh_Kumar_Chakraborty_2024, 
+		title={Towards Fairness in Online Service with K Servers and Its Application on Fair Food Delivery}, 
+		author={Singh, Daman Deep and Kumar, Amit and Chakraborty, Abhijnan},
+		volume={38}, 
+		url={https://ojs.aaai.org/index.php/AAAI/article/view/29969}, 
+		DOI={10.1609/aaai.v38i18.29969}, 
+		number={18}, 
+		journal={Proceedings of the AAAI Conference on Artificial Intelligence}, 
+		year={2024}, 
+		month={Mar.}, 
+		pages={19929-19936} 
+	}
+```
