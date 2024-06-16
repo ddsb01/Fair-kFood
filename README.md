@@ -17,7 +17,7 @@ conda activate fair_kserver
 ```
 Additionally, access to Gurobi Optimizer is required. Access to Gurobi's academic (free!) license can be requested [here](https://www.gurobi.com/academia/academic-program-and-licenses/).
 
-## Datasets
+## Accessing Datasets
 * To get access to the food-delivery dataset, please follow the procedure defined [here](https://www.cse.iitd.ac.in/~sayan/files/foodmatch.txt).
 	* After getting the data, structure it in the format specified in [./data/A/meta.md](./data/A/meta.md)
 * The scripts to generate the completely synthetic datasets (SynSparse and SynDense) and the semi-synthetic quick-commerce dataset are present in [./data_gen/Q](./data_gen/Q) and [./data_gen/Q](./data_gen/Q), respectively. Ensure that the datasets follows the format specified in [./data/X/meta.md](./data/X/meta.md) for synthetich dataset(s) and in [./data/Q/meta.md](./data/Q/meta.md) quick-commerce dataset.
@@ -53,7 +53,7 @@ Additionally, access to Gurobi Optimizer is required. Access to Gurobi's academi
 * Online solutions
 	* Usage
 	```bash
-	python3 src/online_solution.py --city X
+	python3 src/online_solution.py --city X --day 1 --method min*
 	```
 	* The parameters are explained below:
 		- **city_name**: city name of the corresponding dataset [default 'X' <-- synthetic dataset]
