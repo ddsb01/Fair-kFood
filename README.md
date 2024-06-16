@@ -90,5 +90,5 @@ If you find our work useful, please cite using:
 	year	=	{2024}, 
 	month	=	{Mar.}, 
 	pages 	=	{19929-19936} 
-	}
+}
 ```
