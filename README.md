@@ -1,5 +1,5 @@
 # Fair-kFood
-Offical codebase for our work "Towards Fairness in Online Service with k Servers and its Applications to Fair Food Delivery" (AAAI 2024).
+Offical codebase for our work ["Towards Fairness in Online Service with k Servers and its Applications to Fair Food Delivery"](https://ojs.aaai.org/index.php/AAAI/article/view/29969) (AAAI 2024).
 
 
 # Getting Started
