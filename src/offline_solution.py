@@ -707,7 +707,7 @@ if __name__=='__main__':
     parser.add_argument('--weight_var', choices=['time', 'dist'], default='dist',
                         type=str, required=False, help='Weight variable for road network')
     parser.add_argument('--objective', choices=['maxmin', 'min', 'multi', 'bound'], default='maxmin', 
-                        type=str, required=True, help='Type of Objective function')
+                        type=str, required=False, help='Type of Objective function')
     parser.add_argument('--bound_factor', choices=[1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.0, 2.5, 5.0, 10.0], default=2.0,
                         type=float, required=False, help='optimal solution\'s of "bound" objective must be within "bound_factor" times the minimum possible cost')
     parser.add_argument('--ub', choices=[0, 1], default=0,
@@ -734,16 +734,16 @@ if __name__=='__main__':
                         type=int, required=False, help='whether to take odd timestamped data <=> slotted data with timestep=2 (choose 2 as input) AND distinct prep_tss !')
     
     ## only synthetic data specific args:
-    parser.add_argument('--num_timesteps', choices=[100,200,500,1000,2000],
-                        type=int, required=True)
-    parser.add_argument('--num_nodes', choices=[50,100,500,1000], 
-                        type=int, required=True, help='# nodes in metric space')
+    parser.add_argument('--num_timesteps', choices=[100,200,500,1000,2000], default=500,
+                        type=int, required=False, help='number of timesteps (refer the generated dataset)')
+    parser.add_argument('--num_nodes', choices=[50,100,500,1000], default=500,
+                        type=int, required=False, help='# nodes in metric space (refer the generated dataset)')
     parser.add_argument('--num_requests', choices=[10,30,50,100,250,500,1000],
-                        type=int, required=True)
+                        type=int, required=False, help='# requests in the dataset (refer the generated dataset)')
     parser.add_argument('--num_servers', choices=[5,10,20,25,30,50,100,150,200,250,400,500],
-                        type=int, required=True)
+                        type=int, required=False)
     parser.add_argument('--edge_prob', choices=[0.1,0.2,0.5,0.6,0.7,0.9], default=0.5, 
-                        type=float, required=False)
+                        type=float, required=False, help='edge connection probability chosen while generating the dataset')
     
 
     ## only quick commerce data specific args: None

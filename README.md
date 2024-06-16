@@ -27,18 +27,51 @@ Additionally, access to Gurobi Optimizer is required. Access to Gurobi's academi
 * Offline-optimal solution
 	* Usage
 	```bash
-	python3 src/offline_solution.py --city X
+	python3 src/offline_solution.py --city X --day 1 --objective maxmin
 	```
 	* The parameters are explained below:
-		- **city_name**: A (food-delivery), Q (quick-commerce), X (synthetic)
-		- ****:
-
+		- **city_name**: city name of the corresponding dataset [default 'X' <-- synthetic dataset]
+		```
+			A --> Food-delivery 
+			Q --> Quick-commerce 
+			X --> Synthetic 		
+		```
+		- **day**: Day corresponding to the dataset [default '1']
+		```
+			{1,2,3,4,5,6} for city A
+			{1} for cities X and Q
+		```
+		- **objective**: Offline solution objective function [default 'maxmin']
+		```
+			maxmin --> maxmimize the minimum reward (corresponds to FlowMILP)
+			bound --> objective with cost-efficiency constraint (corresponds to FlowMILP (2S))
+			min --> minimize the net reward
+			multi --> 'max' objective with cost-efficiency constraint
+		```	
+		- for other auxiliary arguments, refer `./src/offline_solution.py`
 * Online solutions
 	* Usage
 	```bash
 	python3 src/online_solution.py --city X
 	```
 	* The parameters are explained below:
-		- **city_name**: A (food-delivery), Q (quick-commerce), X (synthetic)
-		- ****:
+		- **city_name**: city name of the corresponding dataset [default 'X' <-- synthetic dataset]
+		```
+			A --> Food-delivery 
+			Q --> Quick-commerce 
+			X --> Synthetic 		
+		```
+		- **day**: Day corresponding to the dataset [default '1']
+		```
+			{1,2,3,4,5,6} for city A
+			{1} for cities X and Q
+		```
+		- **method**: Online algorithm [default 'doc4food']
+		```
+			random --> random assignment preferring server with the least reward so far (RANDOM algorithm)
+			min --> assigns request to the server with the least reward (GREEDYMIN algorithm)
+			min* --> 'min' with considerating of virtual movements (Doc4Food algorithm)
+			round-robin --> round-robin assignment of requests (RoundRobiin algorithm)
+		```	
+		- for other auxiliary arguments, refer `./src/online_solution.py`
 
